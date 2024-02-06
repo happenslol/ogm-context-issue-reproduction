@@ -1,7 +1,10 @@
-import { ApolloServer } from "@apollo/server"
-import { startStandaloneServer } from "@apollo/server/standalone"
+import { createServer } from "node:http"
+import { createYoga } from "graphql-yoga"
 import { Neo4jGraphQL } from "@neo4j/graphql"
 import neo4j from "neo4j-driver"
+import OGM from "@neo4j/graphql-ogm"
+
+const DEBUG = false
 
 const driver = neo4j.driver(
   "bolt://localhost:7687",
@@ -11,7 +14,6 @@ const driver = neo4j.driver(
 const typeDefs = `#graphql
   type User {
     id: ID!
-    posts: [Post] @customResolver(requires: "id")
   }
 
   type Post @authorization(filter: [{ where: { node: { author: { id: "$jwt.sub" } } } } ]) {
@@ -19,23 +21,58 @@ const typeDefs = `#graphql
     content: String!
     author: User! @relationship(type: "AUTHORED", direction: IN)
   }
+
+  type Query {
+    postById(id: ID!): Post
+  }
 `
 
+let ogmCache
+const getOGM = async () => {
+  if (ogmCache != null) return ogmCache
+
+  const ogm = new OGM.OGM({
+    typeDefs,
+    driver,
+    resolvers,
+    debug: DEBUG,
+    features: { authorization: { verify: false, key: "" }},
+  })
+
+  await ogm.init()
+  ogmCache = ogm
+  return ogm
+}
+
 const resolvers = {
-  User: {
-    posts: async (parent, params, context, info) => {
-      const { id } = params
-      return [{ title: "My Post", content: "Some content", author: { id: "some-user" } }]
+  Query: {
+    postById: async (parent, params, context, info) => {
+      const ogm = await getOGM()
+      const Post = ogm.model("Post")
+
+      const withContext = await Post.find({ context })
+      const withoutContext = await Post.find()
+
+      return null
     },
   },
 }
 
-const neoSchema = new Neo4jGraphQL({ typeDefs, driver, resolvers })
-const server = new ApolloServer({ schema: await neoSchema.getSchema() })
+await getOGM()
 
-const { url } = await startStandaloneServer(server, {
-  context: async ({ req }) => ({ req, jwt: { sub: "some-user" } }),
-  listen: { port: 4000 }
+const neoSchema = new Neo4jGraphQL({
+  typeDefs,
+  driver,
+  resolvers,
+  debug: DEBUG,
+  features: { authorization: { verify: false, key: "" }},
 })
 
-console.log(`Serving at ${url}`)
+const yoga = createYoga({
+  schema: await neoSchema.getSchema(),
+  context: async (context) => ({ ...context, jwt: { sub: "some-user" } })
+})
+
+createServer(yoga).listen(4000, () => {
+  console.info(`Server ready at localhost:4000`)
+})

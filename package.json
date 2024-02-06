@@ -2,12 +2,15 @@
   "name": "ogm-context-issue-reproduction",
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js"
+  },
   "author": "Hilmar Wiegand <me@hwgnd.de>",
   "dependencies": {
-    "@apollo/server": "^4.10.0",
     "@neo4j/graphql": "^4.4.5",
+    "@neo4j/graphql-ogm": "^4.4.5",
     "graphql": "^16.8.1",
+    "graphql-yoga": "^5.1.1",
     "neo4j-driver": "^5.17.0"
   }
 }
